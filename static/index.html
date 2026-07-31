@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>HHD Performance Testing</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; padding: 0; height: 100vh; overflow: hidden; }
+h1 { color: #4fc3f7; margin-bottom: 20px; font-size: 1.5rem; }
+.layout { display: flex; height: 100vh; }
+.left-panel { width: 70%; overflow-y: auto; padding: 20px; }
+.right-panel { width: 30%; background: #0a0a1a; border-left: 1px solid #0f3460; display: flex; flex-direction: column; }
+.right-panel h2 { color: #4fc3f7; font-size: 0.85rem; padding: 12px 16px; background: #0f1a2e; border-bottom: 1px solid #0f3460; }
+#terminal { flex: 1; padding: 12px 16px; font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 11.5px; overflow-y: auto; color: #8be9fd; white-space: pre-wrap; line-height: 1.6; }
+.card { background: #16213e; border-radius: 12px; padding: 20px; margin-bottom: 16px; border: 1px solid #0f3460; }
+.card h2 { font-size: 0.9rem; color: #888; text-transform: uppercase; margin-bottom: 10px; }
+select, input, button { font-size: 14px; padding: 10px 14px; border-radius: 8px; border: 1px solid #333; background: #0f3460; color: #eee; width: 100%; }
+select:focus, input:focus { outline: 2px solid #4fc3f7; }
+button { cursor: pointer; background: #4fc3f7; color: #000; font-weight: 600; border: none; transition: 0.2s; }
+button:hover { background: #81d4fa; }
+button:disabled { background: #333; color: #666; cursor: not-allowed; }
+.btn-save { background: #66bb6a; }
+.btn-save:hover { background: #81c784; }
+.btn-run-all { background: #ffa726; }
+.btn-run-all:hover { background: #ffb74d; }
+.metrics-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px; }
+.metric-box { background: #0f3460; border-radius: 10px; padding: 16px; text-align: center; border: 1px solid #1a3a6b; }
+.metric-box .label { font-size: 0.75rem; color: #888; text-transform: uppercase; }
+.metric-box .value { font-size: 1.8rem; font-weight: 700; color: #4fc3f7; margin: 8px 0; min-height: 40px; }
+.metric-box .unit { font-size: 0.8rem; color: #666; }
+.metric-box button { margin-top: 8px; padding: 6px; font-size: 12px; }
+.device-info { display: flex; gap: 20px; margin-top: 8px; font-size: 0.85rem; color: #aaa; }
+.device-info span { background: #0f3460; padding: 4px 10px; border-radius: 6px; }
+.history { max-height: 200px; overflow-y: auto; }
+.history table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.history th, .history td { padding: 8px; text-align: center; border-bottom: 1px solid #1a3a6b; }
+.history th { color: #4fc3f7; position: sticky; top: 0; background: #16213e; }
+.row-actions { display: flex; gap: 8px; margin-top: 16px; }
+.row-actions button { width: auto; padding: 12px 24px; }
+.status { font-size: 0.8rem; color: #ffa726; margin-top: 8px; min-height: 20px; }
+.not-installed { color: #ef5350; font-size: 0.8rem; }
+.rating-input { width: 60px; display: inline-block; text-align: center; }
+.remarks-input { margin-top: 10px; }
+</style>
+</head>
+<body>
+<div class="layout">
+<div class="left-panel">
+
+<h1>HHD Performance Testing Tool</h1>
+
+<div class="card">
+  <h2>Device</h2>
+  <select id="deviceSelect" onchange="onDeviceChange()">
+    <option value="">Loading devices...</option>
+  </select>
+  <div class="device-info" id="deviceInfo"></div>
+  <div style="margin-top:8px;">
+    <button onclick="uninstallAll()" style="width:auto;padding:8px 16px;background:#ef5350;font-size:12px;">Uninstall All Delhivery Apps</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Application</h2>
+  <select id="appSelect" onchange="onAppChange()">
+    <option value="">Select device first</option>
+  </select>
+  <div style="margin-top:8px;">
+    <button onclick="killApp()" style="width:auto;padding:8px 16px;background:#ef5350;font-size:12px;">Kill App</button>
+    <button onclick="launchApp()" style="width:auto;padding:8px 16px;background:#66bb6a;font-size:12px;margin-left:8px;">Launch App</button>
+  </div>
+  <div id="appStatus" class="status"></div>
+</div>
+
+<div class="card">
+  <h2>Metrics</h2>
+  <div class="metrics-grid">
+    <div class="metric-box">
+      <div class="label">CPU Usage</div>
+      <div class="value" id="val-cpu">-</div>
+      <div class="unit">%</div>
+      <button onclick="runMetric('cpu')">Run</button>
+    </div>
+    <div class="metric-box">
+      <div class="label">Memory</div>
+      <div class="value" id="val-memory">-</div>
+      <div class="unit">MB</div>
+      <button onclick="runMetric('memory')">Run</button>
+    </div>
+    <div class="metric-box">
+      <div class="label">Launch Time</div>
+      <div class="value" id="val-launch">-</div>
+      <div class="unit">ms</div>
+      <button onclick="runMetric('launch')">Run</button>
+    </div>
+    <div class="metric-box">
+      <div class="label">FPS</div>
+      <div class="value" id="val-fps">-</div>
+      <div class="unit">fps</div>
+      <button onclick="runMetric('fps')">Run</button>
+    </div>
+    <div class="metric-box">
+      <div class="label">Network Latency</div>
+      <div class="value" id="val-network">-</div>
+      <div class="unit">ms</div>
+      <button onclick="runMetric('network')">Run</button>
+    </div>
+    <div class="metric-box">
+      <div class="label">Rating</div>
+      <input type="number" id="val-rating" class="rating-input" min="1" max="5" step="0.5" placeholder="1-5">
+      <div class="unit">/5</div>
+    </div>
+  </div>
+  <input type="text" id="val-remarks" class="remarks-input" placeholder="Remarks (optional)">
+  <div class="row-actions">
+    <button class="btn-run-all" onclick="runAll()">Run All Metrics</button>
+    <button class="btn-save" onclick="saveToExcel()">Save to Excel</button>
+    <button onclick="openSheet()" style="width:auto;padding:12px 24px;background:#7c4dff;">Open Sheet</button>
+  </div>
+  <div class="status" id="mainStatus"></div>
+</div>
+
+<div class="card history">
+  <h2>Saved Results</h2>
+  <table>
+    <thead><tr><th>App</th><th>Device</th><th>CPU</th><th>Mem</th><th>Launch</th><th>FPS</th><th>Net</th><th>Rating</th></tr></thead>
+    <tbody id="historyBody"></tbody>
+  </table>
+</div>
+
+</div>
+<div class="right-panel">
+  <h2>Terminal Output</h2>
+  <div id="terminal"></div>
+</div>
+</div>
+
+<script>
+let devices = [];
+let currentDevice = null;
+let currentApp = null;
+let metrics = { cpu: null, memory: null, launch: null, fps: null, network: null };
+let history = JSON.parse(localStorage.getItem('hhd_history') || '[]');
+
+async function init() {
+  renderHistory();
+  const res = await fetch('/api/devices');
+  devices = await res.json();
+  const sel = document.getElementById('deviceSelect');
+  sel.innerHTML = '<option value="">-- Select Device --</option>';
+  devices.forEach(d => {
+    sel.innerHTML += `<option value="${d.serial}">${d.label}</option>`;
+  });
+}
+
+function onDeviceChange() {
+  const serial = document.getElementById('deviceSelect').value;
+  currentDevice = devices.find(d => d.serial === serial);
+  const info = document.getElementById('deviceInfo');
+  if (currentDevice) {
+    info.innerHTML = `<span>Android ${currentDevice.android}</span><span>${currentDevice.manufacturer}</span><span>${currentDevice.model}</span>`;
+    logTerminal(`\n> Selected device: ${currentDevice.label}`);
+    loadPackages();
+  } else { info.innerHTML = ''; }
+}
+
+async function loadPackages() {
+  const res = await fetch(`/api/packages?device=${currentDevice.serial}`);
+  const packages = await res.json();
+  const sel = document.getElementById('appSelect');
+  sel.innerHTML = '<option value="">-- Select App --</option>';
+  packages.forEach(p => {
+    const suffix = p.installed ? '' : ' [NOT INSTALLED]';
+    sel.innerHTML += `<option value="${p.package}" ${!p.installed ? 'disabled' : ''}>${p.name}${suffix}</option>`;
+  });
+}
+
+function onAppChange() {
+  currentApp = document.getElementById('appSelect').value;
+  logTerminal(`> Selected app: ${currentApp}`);
+  resetMetrics();
+}
+
+async function killApp() {
+  if (!currentDevice || !currentApp) { alert('Select device and app first'); return; }
+  logTerminal(`$ adb -s ${currentDevice.serial} shell am force-stop ${currentApp}`);
+  await fetch(`/api/kill?device=${currentDevice.serial}&package=${currentApp}`);
+  logTerminal(`  - App killed`);
+}
+
+async function uninstallAll() {
+  if (!currentDevice) { alert('Select device first'); return; }
+  if (!confirm('This will uninstall ALL delhivery apps (except Store). Continue?')) return;
+  logTerminal(`\n> Uninstalling all delhivery apps on ${currentDevice.serial}...`);
+  const res = await fetch(`/api/uninstall-all?device=${currentDevice.serial}`);
+  const data = await res.json();
+  logTerminal(`  - Removed ${data.count} apps`);
+  data.removed.forEach(pkg => logTerminal(`    - ${pkg}`));
+  loadPackages();
+}
+
+async function launchApp() {
+  if (!currentDevice || !currentApp) { alert('Select device and app first'); return; }
+  logTerminal(`$ adb -s ${currentDevice.serial} shell monkey -p ${currentApp} ...`);
+  await fetch(`/api/launch?device=${currentDevice.serial}&package=${currentApp}`);
+  logTerminal(`  - App launched`);
+}
+
+function resetMetrics() {
+  ['cpu', 'memory', 'launch', 'fps', 'network'].forEach(m => {
+    document.getElementById(`val-${m}`).textContent = '-';
+    metrics[m] = null;
+  });
+  document.getElementById('val-rating').value = '';
+  document.getElementById('val-remarks').value = '';
+}
+
+async function runMetric(metric) {
+  if (!currentDevice || !currentApp) { alert('Select device and app first'); return; }
+  const el = document.getElementById(`val-${metric}`);
+  el.textContent = '...';
+  logTerminal(`$ adb -s ${currentDevice.serial} - running ${metric} for ${currentApp}`);
+  try {
+    const res = await fetch(`/api/metric/${metric}?device=${currentDevice.serial}&package=${currentApp}`);
+    const data = await res.json();
+    metrics[metric] = data.value;
+    el.textContent = data.value >= 0 ? data.value : 'N/A';
+    logTerminal(`  - ${metric}: ${data.value} ${data.unit}${data.note ? ' ('+data.note+')' : ''}`);
+  } catch (e) {
+    el.textContent = 'ERR';
+    logTerminal(`  - ERROR: ${e.message}`);
+  }
+}
+
+function logTerminal(msg) {
+  const term = document.getElementById('terminal');
+  term.textContent += msg + '\n';
+  term.scrollTop = term.scrollHeight;
+}
+
+async function runAll() {
+  if (!currentDevice || !currentApp) { alert('Select device and app first'); return; }
+  document.getElementById('mainStatus').textContent = 'Running all metrics...';
+  for (const m of ['launch', 'cpu', 'memory', 'fps', 'network']) { await runMetric(m); }
+  document.getElementById('mainStatus').textContent = 'All metrics collected';
+}
+
+async function saveToExcel() {
+  if (!currentDevice || !currentApp) { alert('Select device and app first'); return; }
+  const appName = document.getElementById('appSelect').selectedOptions[0]?.textContent || '';
+  const payload = {
+    package: currentApp,
+    appName: appName.replace(' [NOT INSTALLED]', ''),
+    manufacturer: currentDevice.manufacturer,
+    model: currentDevice.model,
+    serial: currentDevice.serial,
+    android: currentDevice.android,
+    cpu: metrics.cpu, memory: metrics.memory, launch: metrics.launch,
+    fps: metrics.fps, network: metrics.network,
+    crashes: 0, anr: 0,
+    rating: parseFloat(document.getElementById('val-rating').value) || null,
+    remarks: document.getElementById('val-remarks').value
+  };
+  logTerminal(`> Saving to Excel...`);
+  const res = await fetch('/api/save', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+  const result = await res.json();
+  if (result.success) {
+    document.getElementById('mainStatus').textContent = `Saved to ${result.sheet} row ${result.row}`;
+    logTerminal(`  - Saved to sheet "${result.sheet}" row ${result.row}`);
+    history.unshift(payload);
+    localStorage.setItem('hhd_history', JSON.stringify(history.slice(0, 100)));
+    renderHistory();
+  }
+}
+
+function openSheet() { fetch('/api/open-sheet'); logTerminal('> Opening Excel sheet...'); }
+
+function renderHistory() {
+  const tbody = document.getElementById('historyBody');
+  tbody.innerHTML = history.slice(0, 20).map(h => `<tr><td>${h.appName||''}</td><td>${h.model||''}</td><td>${h.cpu??'-'}</td><td>${h.memory??'-'}</td><td>${h.launch??'-'}</td><td>${h.fps??'-'}</td><td>${h.network??'-'}</td><td>${h.rating??'-'}</td></tr>`).join('');
+}
+
+init();
+</script>
+</body>
+</html>
