@@ -2,6 +2,10 @@
 HHD Performance Testing Tool
 Run: python3 app.py
 Open: http://localhost:5000
+
+Supports two modes (set via PERF_MODE env var):
+  - "google" (default): writes directly to Google Sheets
+  - "local": writes to a local .xlsx file
 """
 import subprocess
 import json
@@ -13,7 +17,22 @@ from datetime import datetime
 
 app = Flask(__name__, static_folder='static')
 
+# --- Configuration ---
+PERF_MODE = os.environ.get('PERF_MODE', 'google')  # "google" or "local"
 EXCEL_PATH = os.environ.get('PERF_EXCEL_PATH', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Godam_HHD_Performance_Testing.xlsx'))
+GSHEET_ID = os.environ.get('GSHEET_ID', '')  # Set your Google Sheet ID here
+GSHEET_CREDS = os.environ.get('GSHEET_CREDS', './gsheet_credentials.json')
+
+# --- Google Sheets client (lazy init) ---
+_gsheet_client = None
+
+def get_gsheet():
+    """Get or create the gspread client and open the spreadsheet."""
+    global _gsheet_client
+    if _gsheet_client is None:
+        import gspread
+        _gsheet_client = gspread.service_account(filename=GSHEET_CREDS)
+    return _gsheet_client.open_by_key(GSHEET_ID)
 
 GODAM_PACKAGES = [
     ("Store (Godam Drawer)", "com.delhivery.godam.drawer"),
@@ -239,12 +258,65 @@ def uninstall_all():
 
 @app.route('/api/save', methods=['POST'])
 def save_to_excel():
-    """Save a metric reading to the correct device sheet in the Excel file."""
+    """Save a metric reading - to Google Sheet or local Excel based on PERF_MODE."""
     data = request.json
-    wb = load_workbook(EXCEL_PATH)
     model = data.get('model', '')
     manufacturer = data.get('manufacturer', '')
     sheet_name = f"{manufacturer} {model}"
+
+    if PERF_MODE == 'google':
+        return _save_to_gsheet(data, model, sheet_name)
+    else:
+        return _save_to_local(data, model, sheet_name)
+
+
+def _save_to_gsheet(data, model, sheet_name):
+    """Write metrics to Google Sheet."""
+    try:
+        spreadsheet = get_gsheet()
+
+        # Find or create worksheet
+        ws = None
+        for worksheet in spreadsheet.worksheets():
+            if model in worksheet.title:
+                ws = worksheet
+                break
+
+        if not ws:
+            ws = spreadsheet.add_worksheet(title=sheet_name, rows=100, cols=12)
+            headers = ["S/N", "App Name", "Package", "CPU Usage (%)", "Memory Usage (MB)",
+                       "App Launch Time (ms)", "FPS", "Network Latency (ms)",
+                       "Crash Count", "ANR Count", "Rating (1-5)", "Remarks"]
+            ws.update('A4:L4', [headers])
+
+        # Find next empty row (data starts at row 5)
+        col_b = ws.col_values(2)
+        next_row = max(len(col_b) + 1, 5)
+        sn = next_row - 4
+
+        row_data = [
+            sn,
+            data.get('appName', ''),
+            data.get('package', ''),
+            data.get('cpu'),
+            data.get('memory'),
+            data.get('launch'),
+            data.get('fps'),
+            data.get('network'),
+            data.get('crashes', 0),
+            data.get('anr', 0),
+            data.get('rating'),
+            data.get('remarks', '')
+        ]
+        ws.update(f'A{next_row}:L{next_row}', [row_data])
+        return jsonify({'success': True, 'row': next_row, 'sheet': ws.title, 'mode': 'google'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e), 'mode': 'google'}), 500
+
+
+def _save_to_local(data, model, sheet_name):
+    """Write metrics to local .xlsx file."""
+    wb = load_workbook(EXCEL_PATH)
     ws = None
     for name in wb.sheetnames:
         if model in name:
@@ -274,18 +346,33 @@ def save_to_excel():
     ws.cell(row=next_row, column=11, value=data.get('rating'))
     ws.cell(row=next_row, column=12, value=data.get('remarks', ''))
     wb.save(EXCEL_PATH)
-    return jsonify({'success': True, 'row': next_row, 'sheet': ws.title})
+    return jsonify({'success': True, 'row': next_row, 'sheet': ws.title, 'mode': 'local'})
 
 
 @app.route('/api/open-sheet')
 def open_sheet():
-    """Open the Excel file with the default application."""
-    subprocess.Popen(['xdg-open', os.path.abspath(EXCEL_PATH)])
-    return jsonify({'success': True})
+    """Open the sheet - Google Sheet URL or local file."""
+    if PERF_MODE == 'google':
+        url = f"https://docs.google.com/spreadsheets/d/{GSHEET_ID}"
+        subprocess.Popen(['xdg-open', url])
+        return jsonify({'success': True, 'url': url})
+    else:
+        subprocess.Popen(['xdg-open', os.path.abspath(EXCEL_PATH)])
+        return jsonify({'success': True})
+
+
+@app.route('/api/mode')
+def get_mode():
+    """Return current save mode."""
+    return jsonify({'mode': PERF_MODE, 'gsheet_id': GSHEET_ID if PERF_MODE == 'google' else None})
 
 
 if __name__ == '__main__':
     print("\n\U0001f527 HHD Performance Testing Tool")
-    print(f"\U0001f4ca Excel: {os.path.abspath(EXCEL_PATH)}")
+    print(f"\U0001f4cb Mode: {PERF_MODE.upper()}")
+    if PERF_MODE == 'google':
+        print(f"\U0001f4ca Google Sheet: https://docs.google.com/spreadsheets/d/{GSHEET_ID}")
+    else:
+        print(f"\U0001f4ca Excel: {os.path.abspath(EXCEL_PATH)}")
     print(f"\U0001f310 Open: http://localhost:5000\n")
     app.run(debug=True, port=5000)
