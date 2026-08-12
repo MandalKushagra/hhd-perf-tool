@@ -77,31 +77,31 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
   <div class="metrics-grid">
     <div class="metric-box">
       <div class="label">CPU Usage</div>
-      <div class="value" id="val-cpu">-</div>
+      <div class="value" id="val-cpu">—</div>
       <div class="unit">%</div>
       <button onclick="runMetric('cpu')">Run</button>
     </div>
     <div class="metric-box">
       <div class="label">Memory</div>
-      <div class="value" id="val-memory">-</div>
+      <div class="value" id="val-memory">—</div>
       <div class="unit">MB</div>
       <button onclick="runMetric('memory')">Run</button>
     </div>
     <div class="metric-box">
       <div class="label">Launch Time</div>
-      <div class="value" id="val-launch">-</div>
+      <div class="value" id="val-launch">—</div>
       <div class="unit">ms</div>
       <button onclick="runMetric('launch')">Run</button>
     </div>
     <div class="metric-box">
       <div class="label">FPS</div>
-      <div class="value" id="val-fps">-</div>
+      <div class="value" id="val-fps">—</div>
       <div class="unit">fps</div>
       <button onclick="runMetric('fps')">Run</button>
     </div>
     <div class="metric-box">
       <div class="label">Network Latency</div>
-      <div class="value" id="val-network">-</div>
+      <div class="value" id="val-network">—</div>
       <div class="unit">ms</div>
       <button onclick="runMetric('network')">Run</button>
     </div>
@@ -128,12 +128,12 @@ button:disabled { background: #333; color: #666; cursor: not-allowed; }
   </table>
 </div>
 
-</div>
+</div><!-- end left-panel -->
 <div class="right-panel">
   <h2>Terminal Output</h2>
   <div id="terminal"></div>
 </div>
-</div>
+</div><!-- end layout -->
 
 <script>
 let devices = [];
@@ -161,7 +161,9 @@ function onDeviceChange() {
     info.innerHTML = `<span>Android ${currentDevice.android}</span><span>${currentDevice.manufacturer}</span><span>${currentDevice.model}</span>`;
     logTerminal(`\n> Selected device: ${currentDevice.label}`);
     loadPackages();
-  } else { info.innerHTML = ''; }
+  } else {
+    info.innerHTML = '';
+  }
 }
 
 async function loadPackages() {
@@ -184,31 +186,37 @@ function onAppChange() {
 async function killApp() {
   if (!currentDevice || !currentApp) { alert('Select device and app first'); return; }
   logTerminal(`$ adb -s ${currentDevice.serial} shell am force-stop ${currentApp}`);
-  await fetch(`/api/kill?device=${currentDevice.serial}&package=${currentApp}`);
-  logTerminal(`  - App killed`);
+  const res = await fetch(`/api/kill?device=${currentDevice.serial}&package=${currentApp}`);
+  const data = await res.json();
+  logTerminal(`  → App killed`);
+  document.getElementById('mainStatus').textContent = 'App force-stopped';
 }
 
 async function uninstallAll() {
   if (!currentDevice) { alert('Select device first'); return; }
   if (!confirm('This will uninstall ALL delhivery apps (except Store). Continue?')) return;
   logTerminal(`\n> Uninstalling all delhivery apps on ${currentDevice.serial}...`);
+  document.getElementById('mainStatus').textContent = 'Uninstalling... this may take a minute';
   const res = await fetch(`/api/uninstall-all?device=${currentDevice.serial}`);
   const data = await res.json();
-  logTerminal(`  - Removed ${data.count} apps`);
+  logTerminal(`  → Removed ${data.count} apps:`);
   data.removed.forEach(pkg => logTerminal(`    - ${pkg}`));
+  document.getElementById('mainStatus').textContent = `Uninstalled ${data.count} apps`;
   loadPackages();
 }
 
 async function launchApp() {
   if (!currentDevice || !currentApp) { alert('Select device and app first'); return; }
   logTerminal(`$ adb -s ${currentDevice.serial} shell monkey -p ${currentApp} ...`);
-  await fetch(`/api/launch?device=${currentDevice.serial}&package=${currentApp}`);
-  logTerminal(`  - App launched`);
+  const res = await fetch(`/api/launch?device=${currentDevice.serial}&package=${currentApp}`);
+  const data = await res.json();
+  logTerminal(`  → App launched ✓`);
+  document.getElementById('mainStatus').textContent = 'App launched';
 }
 
 function resetMetrics() {
   ['cpu', 'memory', 'launch', 'fps', 'network'].forEach(m => {
-    document.getElementById(`val-${m}`).textContent = '-';
+    document.getElementById(`val-${m}`).textContent = '—';
     metrics[m] = null;
   });
   document.getElementById('val-rating').value = '';
@@ -219,16 +227,17 @@ async function runMetric(metric) {
   if (!currentDevice || !currentApp) { alert('Select device and app first'); return; }
   const el = document.getElementById(`val-${metric}`);
   el.textContent = '...';
-  logTerminal(`$ adb -s ${currentDevice.serial} - running ${metric} for ${currentApp}`);
+  logTerminal(`$ adb -s ${currentDevice.serial} → running ${metric} for ${currentApp}`);
   try {
     const res = await fetch(`/api/metric/${metric}?device=${currentDevice.serial}&package=${currentApp}`);
     const data = await res.json();
     metrics[metric] = data.value;
     el.textContent = data.value >= 0 ? data.value : 'N/A';
-    logTerminal(`  - ${metric}: ${data.value} ${data.unit}${data.note ? ' ('+data.note+')' : ''}`);
+    logTerminal(`  → ${metric}: ${data.value} ${data.unit}${data.note ? ' ('+data.note+')' : ''}`);
+    if (data.note) document.getElementById('mainStatus').textContent = data.note;
   } catch (e) {
     el.textContent = 'ERR';
-    logTerminal(`  - ERROR: ${e.message}`);
+    logTerminal(`  → ERROR: ${e.message}`);
   }
 }
 
@@ -241,8 +250,10 @@ function logTerminal(msg) {
 async function runAll() {
   if (!currentDevice || !currentApp) { alert('Select device and app first'); return; }
   document.getElementById('mainStatus').textContent = 'Running all metrics...';
-  for (const m of ['launch', 'cpu', 'memory', 'fps', 'network']) { await runMetric(m); }
-  document.getElementById('mainStatus').textContent = 'All metrics collected';
+  for (const m of ['launch', 'cpu', 'memory', 'fps', 'network']) {
+    await runMetric(m);
+  }
+  document.getElementById('mainStatus').textContent = 'All metrics collected ✓';
 }
 
 async function saveToExcel() {
@@ -255,29 +266,48 @@ async function saveToExcel() {
     model: currentDevice.model,
     serial: currentDevice.serial,
     android: currentDevice.android,
-    cpu: metrics.cpu, memory: metrics.memory, launch: metrics.launch,
-    fps: metrics.fps, network: metrics.network,
-    crashes: 0, anr: 0,
+    cpu: metrics.cpu,
+    memory: metrics.memory,
+    launch: metrics.launch,
+    fps: metrics.fps,
+    network: metrics.network,
+    crashes: 0,
+    anr: 0,
     rating: parseFloat(document.getElementById('val-rating').value) || null,
     remarks: document.getElementById('val-remarks').value
   };
+  
   logTerminal(`> Saving to Excel...`);
   const res = await fetch('/api/save', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
   const result = await res.json();
   if (result.success) {
     document.getElementById('mainStatus').textContent = `Saved to ${result.sheet} row ${result.row}`;
-    logTerminal(`  - Saved to sheet "${result.sheet}" row ${result.row}`);
+    logTerminal(`  → Saved to sheet "${result.sheet}" row ${result.row}`);
     history.unshift(payload);
     localStorage.setItem('hhd_history', JSON.stringify(history.slice(0, 100)));
     renderHistory();
   }
 }
 
-function openSheet() { fetch('/api/open-sheet'); logTerminal('> Opening Excel sheet...'); }
+function openSheet() {
+  fetch('/api/open-sheet');
+  logTerminal('> Opening Excel sheet...');
+}
 
 function renderHistory() {
   const tbody = document.getElementById('historyBody');
-  tbody.innerHTML = history.slice(0, 20).map(h => `<tr><td>${h.appName||''}</td><td>${h.model||''}</td><td>${h.cpu??'-'}</td><td>${h.memory??'-'}</td><td>${h.launch??'-'}</td><td>${h.fps??'-'}</td><td>${h.network??'-'}</td><td>${h.rating??'-'}</td></tr>`).join('');
+  tbody.innerHTML = history.slice(0, 20).map(h => `
+    <tr>
+      <td>${h.appName || ''}</td>
+      <td>${h.model || ''}</td>
+      <td>${h.cpu ?? '—'}</td>
+      <td>${h.memory ?? '—'}</td>
+      <td>${h.launch ?? '—'}</td>
+      <td>${h.fps ?? '—'}</td>
+      <td>${h.network ?? '—'}</td>
+      <td>${h.rating ?? '—'}</td>
+    </tr>
+  `).join('');
 }
 
 init();
