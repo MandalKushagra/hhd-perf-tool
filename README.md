@@ -1,158 +1,136 @@
 # HHD Performance Testing Tool
 
-Web-based tool for measuring Android app performance metrics on warehouse HHD (Handheld Device) hardware. Connects to devices over ADB, runs benchmarks, and saves results to a structured Excel sheet.
+A small Flask web app for capturing performance metrics of the Godam/WMS Android
+apps on physical HHD devices (Newland, Urovo, Chainway, etc.) over `adb`, and
+recording them to a **Google Sheet** or a **local Excel file**.
 
-![Python](https://img.shields.io/badge/python-3.8+-3776ab?style=flat-square) ![Flask](https://img.shields.io/badge/flask-3.x-000?style=flat-square)
+Metrics captured per app: CPU usage, memory (PSS), app launch time, FPS,
+network latency, crash/ANR counts, a manual rating, and free-text remarks.
 
-## What It Does
+---
 
-- Auto-detects connected ADB devices (manufacturer, model, Android version)
-- Lists installed Godam/WMS apps on each device
-- Measures per-app metrics:
-  - **CPU Usage** (%) via `top` / `dumpsys cpuinfo`
-  - **Memory Usage** (MB) via `dumpsys meminfo` (PSS)
-  - **App Launch Time** (ms) cold start via `am start -W`
-  - **FPS** via `dumpsys gfxinfo` jank frame analysis
-  - **Network Latency** (ms) ping to `api-wms.delhivery.com`
-- Saves results directly to a formatted `.xlsx` file (one sheet per device)
-- Kill/Launch apps remotely
-- Bulk uninstall all Delhivery apps from a device
-- Real-time terminal output panel showing ADB commands being run
+## Requirements
 
-## Prerequisites
+- Python 3
+- `adb` on `PATH` (Android platform-tools)
+- A device connected and authorised for USB debugging
+- For Google mode: a Google service-account JSON with edit access to the target sheet
 
-| Dependency | Version | Install |
-|---|---|---|
-| Python | 3.8+ | `sudo apt install python3 python3-pip python3-venv` |
-| ADB | any | `sudo apt install adb` or via Android SDK platform-tools |
-| USB debugging | - | Enable on each device: Settings > Developer Options > USB Debugging |
-
-Verify ADB sees your device:
-```bash
-adb devices
-# Should list your device serial as "device"
-```
-
-## Quick Start
+## Setup
 
 ```bash
-# 1. Clone
-git clone https://github.com/MandalKushagra/hhd-perf-tool.git
-cd hhd-perf-tool
-
-# 2. Set up virtualenv
 python3 -m venv venv
-source venv/bin/activate
-
-# 3. Install dependencies
-pip install -r requirements.txt
-
-# 4. Generate the Excel sheet (first time only)
-python3 generate_sheet.py
-
-# 5. Start the tool
-python3 app.py
+./venv/bin/pip install -r requirements.txt
 ```
 
-Open **http://localhost:5000** in your browser.
+---
 
-## Generating the Excel Sheet
+## Running
 
-The tool writes metric data to an Excel file. Generate it before first use:
+The tool supports two modes, selected with the `PERF_MODE` environment variable.
+`google` is the default.
+
+### Google mode (writes to a shared Google Sheet)
 
 ```bash
-python3 generate_sheet.py
+PERF_MODE=google ./venv/bin/python app.py
 ```
 
-This creates `Godam_HHD_Performance_Testing.xlsx` in the project root with:
-- A **Summary** sheet
-- One sheet per device (pre-configured for 5 devices)
-- Formatted headers: S/N, App Name, Package, CPU, Memory, Launch Time, FPS, Network, Crashes, ANRs, Rating, Remarks
+Then open http://localhost:5000
 
-To customize devices, edit the `devices` list in `generate_sheet.py`:
-
-```python
-devices = [
-    ("Newland NLS-MT93L", "Newland", "NLS-MT93L", "YOUR_SERIAL", "13"),
-    ("Chainway C66", "Chainway", "C66", "YOUR_SERIAL", "13"),
-    # Add more devices as needed...
-]
-```
-
-## Usage
-
-1. Connect device(s) via USB with debugging enabled
-2. Select a device from the dropdown
-3. Select an app to benchmark
-4. Click **Run All Metrics** or run individual metrics
-5. Add a rating (1-5) and optional remarks
-6. Click **Save to Excel** to persist the row
-
-You can also:
-- **Kill App** / **Launch App** for quick app control
-- **Open Sheet** to view the Excel file
-- **Uninstall All Delhivery Apps** for a clean slate
-
-## Environment Variables
-
-| Variable | Default | Description |
-|---|---|---|
-| `PERF_EXCEL_PATH` | `./Godam_HHD_Performance_Testing.xlsx` | Path to the Excel file |
+### Local mode (writes to a local .xlsx file)
 
 ```bash
-PERF_EXCEL_PATH=/path/to/my/sheet.xlsx python3 app.py
+PERF_MODE=local ./venv/bin/python app.py
 ```
 
-## Project Structure
+Local mode writes to `../Godam_HHD_Performance_Testing.xlsx` (one worksheet per
+device, named `"<manufacturer> <model>"`).
 
+> Tip: use **local mode** for scratch/practice runs so you don't write test data
+> into the shared Google Sheet. Switch to **google mode** for the real capture.
+
+---
+
+## Configuration (environment variables)
+
+| Variable       | Default              | Purpose |
+|----------------|----------------------|---------|
+| `PERF_MODE`    | `google`             | `google` writes to Google Sheets; `local` writes to the local `.xlsx`. |
+| `GSHEET_ID`    | (see `app.py`)       | Target Google Sheet ID (google mode only). |
+| `GSHEET_CREDS` | (see `app.py`)       | Path to the Google service-account credentials JSON (google mode only). |
+
+Examples:
+
+```bash
+# Google mode against a different sheet
+GSHEET_ID=your_sheet_id PERF_MODE=google ./venv/bin/python app.py
+
+# Google mode with custom credentials path
+GSHEET_CREDS=/path/to/creds.json PERF_MODE=google ./venv/bin/python app.py
 ```
-hhd-perf-tool/
-├── app.py                 # Flask backend (ADB + Excel I/O)
-├── static/
-│   └── index.html         # Frontend UI (single-page, no build step)
-├── generate_sheet.py      # Excel sheet generator
-├── requirements.txt       # Python dependencies
-└── .gitignore
-```
 
-## Supported Apps
+### Google mode setup (one-time)
 
-| App | Package |
-|---|---|
-| Store (Godam Drawer) | `com.delhivery.godam.drawer` |
-| WMS | `com.delhivery.mobile.godam.wms` |
-| Picking | `com.delhivery.mobile.godam.picking` |
-| Put | `com.delhivery.mobile.godam.put` |
-| Pack | `com.delhivery.mobile.godam.pack` |
-| Transfer | `com.delhivery.mobile.godam.transfers` |
-| Receiving | `com.delhivery.mobile.godam.receiving` |
-| CycleCount | `com.delhivery.cyclecount` |
-| Box | `com.delhivery.mobile.godam.box` |
-| Dispatch | `com.delhivery.mobile.godam.dispatch` |
-| ContainerInfo | `com.delhivery.mobile.godam.containers` |
-| Rapid Picking | `com.delhivery.darkstore.pick` |
+1. Create a Google Cloud service account and download its JSON key.
+2. Enable the Google Sheets API for the project.
+3. Share the target spreadsheet with the service account's email
+   (`client_email` in the JSON) as an **Editor**.
+4. Point `GSHEET_CREDS` at the JSON file.
 
-To add/remove apps, edit `GODAM_PACKAGES` in `app.py`.
+> The credentials JSON is **never** committed — it is excluded by `.gitignore`.
 
-## Notes
+---
 
-- ADB commands timeout after 15 seconds
-- Network latency is measured from the device (not your machine)
-- FPS measurement takes ~3 seconds (waits for frame data)
-- Launch time does a cold start (force-stops app first)
-- "Open Sheet" uses `xdg-open` (Linux). On macOS use `open`, on Windows use `start`
-- Works with multiple devices connected simultaneously
+## How to capture metrics
+
+1. Connect the HHD via USB and confirm it shows up: `adb devices`.
+2. Start the tool (see Running above) and open http://localhost:5000.
+3. Select the **device** from the dropdown (auto-detected via adb).
+4. Select the **application** (Godam child app) to test.
+5. Click **Run All Metrics** (or run each tile individually: CPU, Memory,
+   Launch Time, FPS, Network).
+6. Add an optional **rating** and **remarks**.
+7. Click **Save** — the row is appended to the device's worksheet
+   (Google Sheet or local `.xlsx` depending on mode).
+8. **Open Sheet** opens the Google Sheet URL (google mode) or the local file
+   (local mode).
+
+### Notes on launch time
+
+Launch time is measured with `am start-activity -W`. The tool uses `TotalTime`
+when available, and falls back to `WaitTime` for apps that redirect to another
+process on launch (e.g. Picking hands off to the Godam `LoginActivity`, which
+makes Android report `LaunchState: UNKNOWN` and omit `TotalTime`). When the
+`WaitTime` fallback is used, the reading carries a note to that effect.
+
+---
+
+## Endpoints (for reference)
+
+| Endpoint                | Purpose |
+|-------------------------|---------|
+| `GET /api/devices`      | List connected adb devices. |
+| `GET /api/packages`     | List which Godam apps are installed on the device. |
+| `GET /api/metric/cpu`   | CPU usage %. |
+| `GET /api/metric/memory`| Memory (TOTAL PSS) in MB. |
+| `GET /api/metric/launch`| App launch time in ms (TotalTime, falls back to WaitTime). |
+| `GET /api/metric/fps`   | Frames per second. |
+| `GET /api/metric/network`| Network latency in ms. |
+| `GET /api/launch`       | Launch the app (monkey). |
+| `GET /api/uninstall-all`| Uninstall all `com.delhivery.*` apps except the Godam drawer. |
+| `POST /api/save`        | Save a metrics row (routes to Google or local per `PERF_MODE`). |
+| `GET /api/open-sheet`   | Open the Google Sheet URL or local file. |
+| `GET /api/mode`         | Return the current mode. |
+
+---
 
 ## Troubleshooting
 
-| Problem | Fix |
-|---|---|
-| No devices showing up | Run `adb devices`, check USB cable, enable USB debugging |
-| "App may not be running" for CPU | Launch the app first, then measure |
-| Network latency fails | Device needs internet. Connect to WiFi |
-| Excel save fails | Run `generate_sheet.py` first |
-| Permission denied on ADB | `adb kill-server && adb start-server`, re-authorize on device |
-
-## License
-
-Internal tool. Use as needed.
+- **Device not listed**: run `adb devices`; accept the USB debugging prompt on
+  the device; re-plug if it shows `unauthorized`/`offline`.
+- **Launch time N/A**: the tool falls back to `WaitTime` for apps that redirect
+  on launch. If still N/A, the app failed to start; check adb.
+- **Google save fails**: confirm the service account has Editor access to the
+  sheet and `GSHEET_CREDS`/`GSHEET_ID` are correct.
+- **Port 5000 in use**: stop the other process, or change the port in `app.py`.

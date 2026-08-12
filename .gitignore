@@ -1,5 +1,16 @@
+# Python virtual environment
 venv/
 __pycache__/
 *.pyc
+
+# Credentials — never commit service-account keys
+*.json
+!package.json
+
+# Local perf output
 *.xlsx
-.env
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
