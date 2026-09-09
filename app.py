@@ -1,6 +1,6 @@
 """
 HHD Performance Testing Tool
-Run: python3 app.py
+Run: python app.py   (Windows)  /  python3 app.py  (Linux/macOS)
 Open: http://localhost:5000
 
 Supports two modes (set via PERF_MODE env var):
@@ -11,6 +11,7 @@ import subprocess
 import json
 import re
 import os
+import sys
 from flask import Flask, jsonify, request, send_from_directory
 from openpyxl import load_workbook
 from datetime import datetime
@@ -22,6 +23,29 @@ PERF_MODE = os.environ.get('PERF_MODE', 'google')  # "google" or "local"
 EXCEL_PATH = os.path.join(os.path.dirname(__file__), '..', 'Godam_HHD_Performance_Testing.xlsx')
 GSHEET_ID = os.environ.get('GSHEET_ID', '1wOkihKil908xK5HfpQL2a1hUvBP5uOJsZY8K4paxkeo')
 GSHEET_CREDS = os.environ.get('GSHEET_CREDS', '/home/kushagra/Downloads/model-obelisk-465116-v2-a9472f70816f.json')
+
+# adb executable name. On Windows the binary is adb.exe; letting the OS resolve
+# it from PATH works for both, but being explicit avoids edge cases.
+ADB = 'adb.exe' if sys.platform == 'win32' else 'adb'
+
+
+def open_path(target):
+    """Open a file path or URL in the OS default handler, cross-platform.
+
+    Windows uses os.startfile, macOS uses `open`, and other POSIX systems use
+    `xdg-open`. Returns True on a best-effort launch, False on failure.
+    """
+    try:
+        if sys.platform == 'win32':
+            os.startfile(target)  # type: ignore[attr-defined]
+        elif sys.platform == 'darwin':
+            subprocess.Popen(['open', target])
+        else:
+            subprocess.Popen(['xdg-open', target])
+        return True
+    except Exception:
+        return False
+
 
 # --- Google Sheets client (lazy init) ---
 _gsheet_client = None
@@ -52,7 +76,7 @@ GODAM_PACKAGES = [
 
 def run_adb(device_id, *args):
     """Run an adb command targeting a specific device."""
-    cmd = ['adb', '-s', device_id] + list(args)
+    cmd = [ADB, '-s', device_id] + list(args)
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
         return result.stdout.strip()
@@ -68,7 +92,7 @@ def index():
 @app.route('/api/devices')
 def get_devices():
     """List connected adb devices with info."""
-    result = subprocess.run(['adb', 'devices'], capture_output=True, text=True)
+    result = subprocess.run([ADB, 'devices'], capture_output=True, text=True)
     devices = []
     for line in result.stdout.strip().split('\n')[1:]:
         if 'device' in line and 'List' not in line and 'offline' not in line:
@@ -378,14 +402,14 @@ def _save_to_local(data, model, sheet_name):
 
 @app.route('/api/open-sheet')
 def open_sheet():
-    """Open the sheet — Google Sheet URL or local file."""
+    """Open the sheet — Google Sheet URL or local file. Cross-platform."""
     if PERF_MODE == 'google':
         url = f"https://docs.google.com/spreadsheets/d/{GSHEET_ID}"
-        subprocess.Popen(['xdg-open', url])
-        return jsonify({'success': True, 'url': url})
+        ok = open_path(url)
+        return jsonify({'success': ok, 'url': url})
     else:
-        subprocess.Popen(['xdg-open', os.path.abspath(EXCEL_PATH)])
-        return jsonify({'success': True})
+        ok = open_path(os.path.abspath(EXCEL_PATH))
+        return jsonify({'success': ok})
 
 
 @app.route('/api/mode')
