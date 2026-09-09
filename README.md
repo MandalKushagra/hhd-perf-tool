@@ -16,12 +16,18 @@ network latency, crash/ANR counts, a manual rating, and free-text remarks.
 - A device connected and authorised for USB debugging
 - For Google mode: a Google service-account JSON with edit access to the target sheet
 
+> **On Windows?** See [WINDOWS.md](WINDOWS.md) for Windows-specific setup
+> (venv paths, setting environment variables, adb drivers).
+
 ## Setup
 
 ```bash
 python3 -m venv venv
 ./venv/bin/pip install -r requirements.txt
 ```
+
+> Windows equivalent: `python -m venv venv` then
+> `venv\Scripts\pip install -r requirements.txt`. See [WINDOWS.md](WINDOWS.md).
 
 ---
 
@@ -49,6 +55,11 @@ device, named `"<manufacturer> <model>"`).
 
 > Tip: use **local mode** for scratch/practice runs so you don't write test data
 > into the shared Google Sheet. Switch to **google mode** for the real capture.
+
+> Windows note: the inline `PERF_MODE=... python app.py` syntax does not work in
+> PowerShell/cmd. Set the variable first (`$env:PERF_MODE = "local"` or
+> `set PERF_MODE=local`), then run `venv\Scripts\python app.py`. See
+> [WINDOWS.md](WINDOWS.md).
 
 ---
 
@@ -134,3 +145,5 @@ makes Android report `LaunchState: UNKNOWN` and omit `TotalTime`). When the
 - **Google save fails**: confirm the service account has Editor access to the
   sheet and `GSHEET_CREDS`/`GSHEET_ID` are correct.
 - **Port 5000 in use**: stop the other process, or change the port in `app.py`.
+- **On Windows**: see [WINDOWS.md](WINDOWS.md) for adb drivers, venv paths, and
+  setting environment variables.
